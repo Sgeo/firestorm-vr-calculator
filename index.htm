@@ -25,28 +25,36 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     <meta name='viewport' content='width=device-width, initial-scale=1, user-scalable=no'>
     <meta name='mobile-web-app-capable' content='yes'>
     <meta name='apple-mobile-web-app-capable' content='yes'>
-    <link rel='icon' type='image/png' sizes='32x32' href='favicon-32x32.png'>
-    <link rel='icon' type='image/png' sizes='96x96' href='favicon-96x96.png'>
-    <link rel='stylesheet' href='css/common.css'>
+    <style>
+      table td {
+        border: 1mm ridge
+      }
+    </style>
 
-    <title>Barebones VR</title>
+    <title>Firestorm VR Calculator</title>
   </head>
   <body>
-    <header>
-      <details open>
-        <summary>Barebones VR</summary>
-        <p>
-          This sample demonstrates extremely simple use of an "immersive-vr"
-          session with no library dependencies. It doesn't render anything
-          exciting, just clears your headset's display to a slowly changing
-          color to prove it's working.
-          <a class="back" href="./">Back</a>
-        </p>
-        <button id="xr-button" class="barebones-button" disabled>XR not found</button>
-      </details>
-    </header>
     <main style='text-align: center;'>
-      <p>Click 'Enter VR' to see content</p> 
+      <p>Ensure you are wearing your VR headset, then click 'Calculate' to calculate Firestorm VR parameters</p>
+      <p><button id="xr-button" class="barebones-button" disabled>XR not found</button></p>
+      <table style="margin: 0 auto">
+        <tr>
+          <td>IPD</td>
+          <td id="ipd"></td>
+        </tr>
+        <tr>
+          <td>Texture Shift</td>
+          <td id="texture-shift"></td>
+        </tr>
+        <tr>
+          <td>Vertical Texture Shift (not supported)</td>
+          <td id="vertical-texture-shift"></td>
+        </tr>
+        <tr>
+          <td>FOV</td>
+          <td id="fov"></td>
+        </tr>
+      </table>
     </main>
     <script>
       (function () {
@@ -72,7 +80,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             if (supported) {
               // Updates the button to start an XR session when clicked.
               xrButton.addEventListener('click', onButtonClicked);
-              xrButton.textContent = 'Enter VR';
+              xrButton.textContent = 'Calculate';
               xrButton.disabled = false;
             }
           });
@@ -107,12 +115,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         // Use the new WebGL context to create a XRWebGLLayer and set it as the
         // sessions baseLayer. This allows any content rendered to the layer to
         // be displayed on the XRDevice.
-        session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
+        session.updateRenderState({ depthNear: 1.0, depthFar: 2.0, baseLayer: new XRWebGLLayer(session, gl) });
 
         // Get a reference space, which is required for querying poses. In this
         // case an 'local' reference space means that all poses will be relative
         // to the location where the XRDevice was first detected.
-        session.requestReferenceSpace('local').then((refSpace) => {
+        session.requestReferenceSpace('viewer').then((refSpace) => {
           xrRefSpace = refSpace;
 
           // Inform the session that we're ready to begin drawing.
@@ -126,7 +134,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       // discarded.
       function onSessionEnded(event) {
         xrSession = null;
-        xrButton.textContent = 'Enter VR';
+        xrButton.textContent = 'Calculate';
 
         // In this simple case discard the WebGL context too, since we're not
         // rendering anything else to the screen with it.
@@ -137,8 +145,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       function onXRFrame(time, frame) {
         let session = frame.session;
 
-        // Inform the session that we're ready for the next frame.
-        session.requestAnimationFrame(onXRFrame);
+
 
         // Get the XRDevice pose relative to the reference space we created
         // earlier.
@@ -166,19 +173,25 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           // Clear the framebuffer
           gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-          // Normally you'd loop through each of the views reported by the frame
-          // and draw them into the corresponding viewport here, but we're
-          // keeping this sample slim so we're not bothering to draw any
-          // geometry.
-          /*for (let view of pose.views) {
-            let viewport = glLayer.getViewport(view);
-            gl.viewport(viewport.x, viewport.y,
-                        viewport.width, viewport.height);
+          let projectionMatrix = pose.views[0].projectionMatrix;
+          let ipd = pose.views[1].transform.position.x - pose.views[0].transform.position.x;
 
-            // Draw a scene using view.projectionMatrix as the projection matrix
-            // and view.transform to position the virtual camera. If you need a
-            // view matrix, use view.transform.inverse.matrix.
-          }*/
+          console.log(projectionMatrix);
+          console.log(xrSession.renderState.depthNear);
+
+          // Below code is heavily reliant on https://stackoverflow.com/questions/48443671/how-to-calculate-fov-from-vrframedata 's explanation of projection matrices
+          // The first element is 2*n/(r-l). We force n=1 with depthNear: 1 above. To get an appropriate FOV, we average between r and l angles (1/(r-l) should be that average)
+          // And find the half angle of that, then double.
+          // The Firestorm VR texture shift code seems to be based on 200%.
+
+          document.querySelector("#texture-shift").textContent = -200 * projectionMatrix[8];
+          document.querySelector("#vertical-texture-shift").textContent = -200 * projectionMatrix[9];
+          document.querySelector("#ipd").textContent = ipd * 1000;
+          document.querySelector("#fov").textContent = 2 * Math.atan(1/projectionMatrix[0]) * 180/Math.PI;
+
+          xrSession.end();
+        } else { // Keep waiting
+          session.requestAnimationFrame(onXRFrame);
         }
       }
 
